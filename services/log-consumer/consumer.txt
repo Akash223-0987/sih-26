@@ -1,2 +1,0 @@
-This is a sample consumer file 
-The purpose of this file is to create a consumer script for kafka that will collect data from fluentBit and process it for further services

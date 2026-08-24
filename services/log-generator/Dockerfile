@@ -8,5 +8,6 @@ CMD ["sh", "-c", "cat /tmp/dummy.txt && sleep 3600"]
 COPY generate.sh /generate.sh
 
 RUN chmod +x /generate.sh
+RUN sed -i 's/\r$//' /generate.sh
 
 CMD [ "/generate.sh" ]
