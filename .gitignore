@@ -75,3 +75,8 @@ Thumbs.db
 dmypy.json
 .pyre/
 .pytype/
+
+# Application logs & database storage
+logs/
+*.log
+data/
