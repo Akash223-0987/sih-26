@@ -2,5 +2,7 @@ fastapi
 uvicorn
 pydantic
 python-multipart
+kafka-python==2.0.2
+confluent-kafka==2.3.0
 clickhouse-connect>=0.6.8
 neo4j>=5.12.0
