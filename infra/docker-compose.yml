@@ -10,7 +10,7 @@ services:
     image: cr.fluentbit.io/fluent/fluent-bit:4.1
     volumes:
       - log-data:/logs:ro
-      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ../config/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
     depends_on:
       - log-generator
 
