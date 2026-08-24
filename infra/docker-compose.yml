@@ -14,5 +14,51 @@ services:
     depends_on:
       - log-generator
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    container_name: clickhouse-ulpf
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_DB=ulpf
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+
+  neo4j:
+    image: neo4j:5.12-community
+    container_name: neo4j-ulpf
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+    volumes:
+      - neo4j-data:/data
+
+  neo4j-init:
+    image: neo4j:5.12-community
+    container_name: neo4j-init-ulpf
+    volumes:
+      - ./neo4j/init-graph.cypher:/init-graph.cypher:ro
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        echo "Waiting for Neo4j to start..."
+        until wget --no-verbose --tries=1 --spider http://neo4j:7474/ 2>/dev/null; do
+          sleep 2
+        done
+        echo "Neo4j is up. Initializing schema..."
+        cypher-shell -a bolt://neo4j:7687 -u neo4j -p password123 -f /init-graph.cypher
+        echo "Neo4j schema initialized successfully."
+    depends_on:
+      - neo4j
+
 volumes:
   log-data:
+  clickhouse-data:
+  neo4j-data:
