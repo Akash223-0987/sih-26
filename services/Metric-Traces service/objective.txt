@@ -1,0 +1,2 @@
+Use openTelementry for metrics and traces purpose
+The purpose of this service is to analyze the incoming metrics and traces data

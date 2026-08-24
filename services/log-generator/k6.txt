@@ -1,0 +1,1 @@
+Here k6 script will be written for testing and log simulation purposes
