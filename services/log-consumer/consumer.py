@@ -1,5 +1,6 @@
 import json
 import logging
+# pyrefly: ignore [missing-import]
 from confluent_kafka import Consumer, KafkaError
 
 logging.basicConfig(level=logging.INFO)
