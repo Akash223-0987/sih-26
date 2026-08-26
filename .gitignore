@@ -38,12 +38,13 @@ env/
 env.bak/
 venv.bak/
 
-# Logs & Pipeline Telemetry Outputs
+# Logs & Pipeline Telemetry Outputs & Database storage
 logs/
 *.log
 *.log.*
 log-data/
 temp_logs/
+data/
 
 # Fluent Bit & Collector State
 *.pos

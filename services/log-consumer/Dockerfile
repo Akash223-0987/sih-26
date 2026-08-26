@@ -1,6 +1,10 @@
-FROM alpine:3.20
+FROM python:3.11-slim
 
-# Dummy Dockerfile for local/testing purposes
-RUN echo "dummy docker image" > /tmp/dummy.txt
+WORKDIR /app
 
-CMD ["sh", "-c", "cat /tmp/dummy.txt && sleep 3600"] 
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY services/log-consumer/consumer.py .
+
+CMD ["python", "-u", "consumer.py"]
