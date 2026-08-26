@@ -40,6 +40,20 @@ services:
       - kafka
     restart: always
 
+  ml-analyzer:
+    build:
+      context: ../
+      dockerfile: services/ML-Analyzer/Dockerfile
+    environment:
+      KAFKA_BROKER: kafka:9092
+      ENABLE_KAFKA: "true"
+      KAFKA_INPUT_TOPIC: logs.raw
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+    restart: always
+
   clickhouse:
     image: clickhouse/clickhouse-server:23.8-alpine
     container_name: clickhouse-ulpf
