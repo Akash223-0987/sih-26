@@ -1,3 +1,7 @@
+# ==============================================================================
+# PyTrace .gitignore
+# ==============================================================================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -6,7 +10,7 @@ __pycache__/
 # C extensions
 *.so
 
-# Distribution / packaging
+# Distribution / Packaging / Builds
 .Python
 build/
 develop-eggs/
@@ -26,52 +30,70 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
-venv/
+# Virtual Environments
 .venv/
+venv/
 ENV/
 env/
 env.bak/
 venv.bak/
 
-# Environment variables & secrets
+# Logs & Pipeline Telemetry Outputs
+logs/
+*.log
+*.log.*
+log-data/
+temp_logs/
+
+# Fluent Bit & Collector State
+*.pos
+*.pos.old
+*.db
+fluent-bit.pos
+flb-storage/
+flb-state/
+
+# Environment Variables & Secrets
 .env
 .env.*
 !.env.example
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
+# Unit Test, Coverage, and Type Checking
+.pytest_cache/
 .coverage
 .coverage.*
-.cache
+htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
-.pytest_cache/
 cover/
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints
-*/.ipynb_checkpoints/*
-
-# IDEs and Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Operating System files
-.DS_Store
-Thumbs.db
-
-# Type checking
+.tox/
+.nox/
 .mypy_cache/
 .dmypy.json
 dmypy.json
 .pyre/
 .pytype/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IDEs & Editor Configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary data / Scratch files
+scratch/
+tmp/
