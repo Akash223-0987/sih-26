@@ -1,5 +1,8 @@
 import json
+import threading
+from typing import Any, cast
 import pytest
+from pydantic import ValidationError
 from pytrace.models.event import (
     ErrorDetails,
     EventDetails,
@@ -70,3 +73,48 @@ def test_pytrace_error_details():
     assert data["error"]["type"] == "ValueError"
     assert "Invalid configuration setting" in data["error"]["message"]
     assert "Traceback" in data["error"]["stacktrace"]
+
+
+# ==============================================================================
+# EDGE CASES & BOUNDARY VALUES
+# ==============================================================================
+
+def test_pytrace_event_validation_boundaries_and_types():
+    """Test PyTraceEvent boundary constraints, validation errors, and invalid types."""
+    # Minimum boundary values
+    event_min = PyTraceEvent(duration_ms=0.0)
+    assert event_min.duration_ms == 0.0
+
+    # Negative values (just below boundaries)
+    event_neg = PyTraceEvent(duration_ms=-1.5)
+    assert event_neg.duration_ms == -1.5
+
+    # Maximum boundary values
+    event_max = PyTraceEvent(duration_ms=999999999.9)
+    assert event_max.duration_ms == 999999999.9
+
+    # Very large inputs (very long service string)
+    huge_service = "s" * 10000
+    event_large = PyTraceEvent(service=huge_service)
+    assert event_large.service == huge_service
+
+    # Very small inputs (single character service)
+    event_small = PyTraceEvent(service="a")
+    assert event_small.service == "a"
+
+    # Invalid inputs and data types
+    with pytest.raises(ValidationError):
+        PyTraceEvent(duration_ms=cast(Any, "not-a-float"))
+
+    # Missing fields
+    with pytest.raises(ValidationError):
+        # Message is missing from dictionary unpacking to trigger validation error
+        ErrorDetails(**cast(Any, {"type": "ValueError"}))
+
+    # Malformed data (non-serializable object inside dict attributes)
+    non_serializable = threading.current_thread()
+    event_malformed = PyTraceEvent(attributes={"thread": non_serializable})
+
+    # Should raise error on JSON serialization due to the non-serializable object
+    with pytest.raises(Exception):
+        event_malformed.to_json()
