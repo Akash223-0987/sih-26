@@ -1,12 +1,14 @@
+import asyncio
+from typing import List, Any, cast
+from unittest.mock import MagicMock
 import pytest
-from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from pytrace.config import PyTraceConfig
 from pytrace.context.request import update_request_attribute
 from pytrace.exporters.base import BaseExporter
-from pytrace.instrumentation.fastapi import PyTrace
+from pytrace.instrumentation.fastapi import PyTrace, PyTraceMiddleware
 from pytrace.logging.logger import StructuredLogger
 from pytrace.models.event import PyTraceEvent
 
@@ -24,7 +26,7 @@ def recording_setup():
     exporter = RecordingExporter()
     config = PyTraceConfig(service_name="test-api", environment="test")
     app = FastAPI(title="TestApp")
-    instrumentor = PyTrace(app=app, config=config, exporter=exporter)
+    PyTrace(app=app, config=config, exporter=exporter)
     custom_logger = StructuredLogger(name="test-api-logger", config=config, exporter=exporter)
 
     @app.get("/users/{user_id}")
@@ -136,3 +138,191 @@ def test_fastapi_client_error_warning(recording_setup):
     assert http_event.event.type == "http_request"
     assert http_event.event.severity == "WARNING"
     assert http_event.http.status_code == 404
+
+
+# ==============================================================================
+# EDGE CASES & BOUNDARY VALUES
+# ==============================================================================
+
+def test_fastapi_middleware_non_http_scope():
+    """Test PyTraceMiddleware with non-http scope types like websockets."""
+    called = []
+    async def mock_app(scope, receive, send):
+        called.append((scope, receive, send))
+
+    middleware = PyTraceMiddleware(app=mock_app)
+
+    scope = {"type": "websocket"}
+    receive = MagicMock()
+    send = MagicMock()
+
+    asyncio.run(middleware(scope, receive, send))
+    assert len(called) == 1
+    assert called[0] == (scope, receive, send)
+
+
+def test_fastapi_middleware_client_ip_edge_cases():
+    """Test PyTraceMiddleware parsing client IP from different ASGI scope structures."""
+    exporter = RecordingExporter()
+    config = PyTraceConfig(service_name="test-api")
+
+    async def mock_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def dummy_receive():
+        return {}
+
+    async def dummy_send(message):
+        pass
+
+    middleware = PyTraceMiddleware(app=mock_app, config=config, exporter=exporter)
+
+    # 1. client is None
+    scope_none = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "client": None,
+        "headers": []
+    }
+    asyncio.run(middleware(scope_none, dummy_receive, dummy_send))
+    assert len(exporter.events) == 1
+    assert exporter.events[0].http.client_ip == "127.0.0.1"
+
+    # 2. client is empty
+    exporter.events.clear()
+    scope_empty = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "client": (),
+        "headers": []
+    }
+    asyncio.run(middleware(scope_empty, dummy_receive, dummy_send))
+    assert len(exporter.events) == 1
+    assert exporter.events[0].http.client_ip == "127.0.0.1"
+
+    # 3. client is normal tuple
+    exporter.events.clear()
+    scope_normal = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "client": ("192.168.1.50", 54321),
+        "headers": []
+    }
+    asyncio.run(middleware(scope_normal, dummy_receive, dummy_send))
+    assert len(exporter.events) == 1
+    assert exporter.events[0].http.client_ip == "192.168.1.50"
+
+
+def test_fastapi_middleware_header_decoding_resilience():
+    """Test PyTraceMiddleware resilience when request headers fail to decode."""
+    exporter = RecordingExporter()
+
+    async def mock_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def dummy_receive():
+        return {}
+
+    async def dummy_send(message):
+        pass
+
+    middleware = PyTraceMiddleware(app=mock_app, exporter=exporter)
+
+    # Header name/value contains invalid type (raising exception on decode)
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "client": ("127.0.0.1", 80),
+        "headers": [
+            (b"user-agent", b"PyTraceAgent"),
+            (cast(Any, None), b"invalid-header-name"),
+            (b"x-custom-header", cast(Any, 12345)),
+        ]
+    }
+
+    asyncio.run(middleware(scope, dummy_receive, dummy_send))
+
+    assert len(exporter.events) == 1
+    ev = exporter.events[0]
+    assert ev.http.user_agent == "PyTraceAgent"
+    assert "x-custom-header" not in ev.http.headers if ev.http.headers else True
+
+
+def test_fastapi_middleware_exception_and_error_handling():
+    """Test PyTraceMiddleware catching, logging, and re-raising exceptions raised by the app."""
+    exporter = RecordingExporter()
+
+    async def failing_app(scope, receive, send):
+        raise RuntimeError("Database connection timed out")
+
+    async def dummy_receive():
+        return {}
+
+    async def dummy_send(message):
+        pass
+
+    middleware = PyTraceMiddleware(app=failing_app, exporter=exporter)
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/submit",
+        "client": ("127.0.0.1", 80),
+        "headers": []
+    }
+
+    # The middleware should re-raise the exception
+    with pytest.raises(RuntimeError):
+        asyncio.run(middleware(scope, dummy_receive, dummy_send))
+
+    assert len(exporter.events) == 1
+    ev = exporter.events[0]
+    assert ev.event.severity == "ERROR"
+    assert ev.event.action == "failed"
+    assert ev.http.status_code == 500
+    assert ev.error is not None
+    assert ev.error.type == "RuntimeError"
+    assert "Database connection timed out" in ev.error.message
+    assert ev.error.stacktrace is not None
+
+
+def test_fastapi_middleware_send_wrapper_missing_headers():
+    """Test PyTraceMiddleware send_wrapper when the ASGI response does not contain the headers key."""
+    exporter = RecordingExporter()
+
+    captured_messages = []
+    async def mock_send(message):
+        captured_messages.append(message)
+
+    async def mock_app(scope, receive, send):
+        # We don't specify "headers" key in the response message
+        await send({"type": "http.response.start", "status": 201})
+
+    async def dummy_receive():
+        return {}
+
+    middleware = PyTraceMiddleware(app=mock_app, exporter=exporter)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/no-headers",
+        "headers": []
+    }
+
+    asyncio.run(middleware(scope, dummy_receive, mock_send))
+
+    assert len(exporter.events) == 1
+    assert exporter.events[0].http.status_code == 201
+
+    # Check that headers were injected even though the original message had no headers
+    assert len(captured_messages) == 1
+    msg = captured_messages[0]
+    headers_dict = dict(msg["headers"])
+    assert b"x-request-id" in headers_dict
+    assert b"x-trace-id" in headers_dict
+    assert b"traceparent" in headers_dict
