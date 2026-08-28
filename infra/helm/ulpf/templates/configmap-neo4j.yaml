@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-neo4j-init
+data:
+  init-graph.cypher: |
+    CREATE CONSTRAINT unique_ip IF NOT EXISTS FOR (i:IP) REQUIRE i.address IS UNIQUE;
+    CREATE CONSTRAINT unique_user IF NOT EXISTS FOR (u:User) REQUIRE u.username IS UNIQUE;
+    CREATE CONSTRAINT unique_alert IF NOT EXISTS FOR (a:Alert) REQUIRE a.id IS UNIQUE;
