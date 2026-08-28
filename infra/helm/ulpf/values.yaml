@@ -1,0 +1,35 @@
+  # Default values for ulpf.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+images:
+  logGenerator:
+    repository: metracer/log-generator
+    tag: latest
+    pullPolicy: IfNotPresent
+  logConsumer:
+    repository: metracer/log-consumer
+    tag: latest
+    pullPolicy: IfNotPresent
+  fluentBit:
+    repository: cr.fluentbit.io/fluent/fluent-bit
+    tag: "4.1"
+  kafka:
+    repository: apache/kafka
+    tag: 4.0.2
+  clickhouse:
+    repository: clickhouse/clickhouse-server
+    tag: 23.8-alpine
+  neo4j:
+    repository: neo4j
+    tag: 5.12-community
+
+neo4j:
+  auth: "neo4j/password123"
+
+clickhouse:
+  user: "default"
+  password: ""
+  db: "ulpf"

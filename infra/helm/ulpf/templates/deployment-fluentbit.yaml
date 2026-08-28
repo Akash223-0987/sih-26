@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-fluentbit
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: fluentbit
+  template:
+    metadata:
+      labels:
+        app: fluentbit
+    spec:
+      containers:
+        - name: fluentbit
+          image: "{{ .Values.images.fluentBit.repository }}:{{ .Values.images.fluentBit.tag }}"
+          volumeMounts:
+            - name: log-data
+              mountPath: /logs
+              readOnly: true
+            - name: fluentbit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+      volumes:
+        - name: log-data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-log-data
+        - name: fluentbit-config
+          configMap:
+            name: {{ .Release.Name }}-fluentbit-config
