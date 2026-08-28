@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-neo4j-init
+  annotations:
+    # This ensures the job runs *after* the StatefulSets are installed
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: neo4j-init
+          image: "{{ .Values.images.neo4j.repository }}:{{ .Values.images.neo4j.tag }}"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Waiting for Neo4j to start on {{ .Release.Name }}-neo4j:7474..."
+              until wget --no-verbose --tries=1 --spider http://{{ .Release.Name }}-neo4j:7474/ 2>/dev/null; do
+                sleep 2
+              done
+              echo "Neo4j is up. Initializing schema..."
+              cypher-shell -a bolt://{{ .Release.Name }}-neo4j:7687 -u {{ first (splitList "/" .Values.neo4j.auth) }} -p {{ last (splitList "/" .Values.neo4j.auth) }} -f /init-graph.cypher
+              echo "Neo4j schema initialized successfully."
+          volumeMounts:
+            - name: neo4j-init-script
+              mountPath: /init-graph.cypher
+              subPath: init-graph.cypher
+              readOnly: true
+      volumes:
+        - name: neo4j-init-script
+          configMap:
+            name: {{ .Release.Name }}-neo4j-init
