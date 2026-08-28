@@ -1,0 +1,30 @@
+services:
+  metric-traces:
+    build:
+      context: ../
+      dockerfile: services/Metric-Traces service/Dockerfile
+    container_name: metric-traces-ulpf
+    ports:
+      - "4318:4318"
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_DB=ulpf
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    depends_on:
+      - clickhouse
+    restart: always
+
+  firewall-simulator:
+    image: python:3.11-slim
+    container_name: firewall-simulator-ulpf
+    volumes:
+      - ../scripts:/scripts:ro
+    working_dir: /scripts
+    command: python -u firewall_simulator.py
+    environment:
+      - METRICS_ENDPOINT=http://metric-traces:4318/v1/metrics
+    depends_on:
+      - metric-traces
+    restart: always
