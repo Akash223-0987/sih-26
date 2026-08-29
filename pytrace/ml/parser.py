@@ -1,9 +1,11 @@
 import hashlib
 import re
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, Mapping, Optional
 
 from pytrace.ml.models import NormalizedLog
+from pytrace.ml.normalizer import normalize_fields
 
 _IP = r"(?:\d{1,3}\.){3}\d{1,3}"
 _PATTERNS = {
@@ -16,6 +18,36 @@ _PATTERNS = {
     "auth_status": re.compile(r"(?:auth(?:_status|entication)?|status)[=: ]+(success|failure|failed|successfully|denied|allow|allowed|blocked)", re.I),
     "vendor": re.compile(r"(?:vendor|product|device)[=: ]+([\w.-]+)", re.I),
 }
+
+_DYNAMIC = re.compile(
+    r"(?:\b(?:\d{1,3}\.){3}\d{1,3}\b|\b\d+\b|\b[0-9a-f]{8,}\b|\"[^\"]*\"|'[^']*')",
+    re.IGNORECASE,
+)
+
+class LogTemplateMiner:
+    """Streaming deterministic template miner suitable for bounded log messages."""
+
+    def __init__(self, max_templates: int = 4096) -> None:
+        self.max_templates = max_templates
+        self._counts: Counter[str] = Counter()
+
+    @staticmethod
+    def template(raw_log: str) -> str:
+        """Replace likely dynamic tokens while retaining static log structure."""
+        text = _DYNAMIC.sub("<*>", raw_log.strip())
+        return re.sub(r"\s+", " ", text)[:2048]
+
+    def mine(self, raw_log: str) -> tuple[str, int]:
+        """Return the stable template and its observed cluster count."""
+        template = self.template(raw_log)
+        if template not in self._counts and len(self._counts) >= self.max_templates:
+            self._counts.popitem()
+        self._counts[template] += 1
+        return template, self._counts[template]
+
+
+
+_TEMPLATE_MINER = LogTemplateMiner()
 
 
 def _first_ip(value: str, offset: int = 0) -> Optional[str]:
@@ -50,24 +82,31 @@ def normalize_log(raw: Any) -> NormalizedLog:
         payload = {"message": raw_log}
 
     text = raw_log
+    log_template, template_count = _TEMPLATE_MINER.mine(raw_log)
     values: Dict[str, Any] = {}
+    normalized_payload = normalize_fields(payload)
     for key, pattern in _PATTERNS.items():
         match = pattern.search(text)
         if match:
             values[key] = match.group(1).lower() if key in {"protocol", "event_action", "auth_status"} else match.group(1)
-    values.setdefault("src_ip", payload.get("src_ip") or payload.get("source.ip") or _first_ip(text))
-    values.setdefault("dst_ip", payload.get("dst_ip") or payload.get("destination.ip") or _first_ip(text, 1))
+    values.setdefault("src_ip", payload.get("src_ip") or normalized_payload.get("source.ip") or _first_ip(text))
+    values.setdefault("dst_ip", payload.get("dst_ip") or normalized_payload.get("destination.ip") or _first_ip(text, 1))
     for key in ("src_port", "dst_port"):
-        if values.get(key) is not None:
-            values[key] = int(values[key])
-        elif payload.get(key) is not None:
-            values[key] = int(payload[key])
+        candidate = values.get(key) or normalized_payload.get(
+            {"src_port": "source.port", "dst_port": "destination.port"}[key]
+        )
+        if candidate is not None:
+            try:
+                values[key] = int(candidate)
+            except (TypeError, ValueError):
+                values[key] = None
     for key in ("protocol", "event_action", "auth_status", "vendor"):
-        values.setdefault(key, payload.get(key))
+        values.setdefault(key, payload.get(key) or normalized_payload.get({"protocol": "network.protocol", "event_action": "event.action", "auth_status": "event.outcome", "vendor": "vendor"}.get(key, key)))
     known = set(values) | {"message", "log", "raw_log", "timestamp", "@timestamp"}
     attributes = {key: value for key, value in payload.items() if key not in known}
     return NormalizedLog(
         timestamp=_timestamp(payload), raw_log=raw_log,
         raw_log_sha256=hashlib.sha256(raw_log.encode("utf-8")).hexdigest(),
-        attributes=attributes, unmapped_properties=attributes.copy(), **values,
+        attributes=attributes, unmapped_properties=attributes.copy(),
+        log_template=log_template, template_count=template_count, **values,
     )

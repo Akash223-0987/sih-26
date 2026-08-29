@@ -16,6 +16,8 @@ class NormalizedLog(BaseModel):
     event_action: Optional[str] = None
     auth_status: Optional[str] = None
     vendor: Optional[str] = None
+    log_template: Optional[str] = None
+    template_count: int = 0
     attributes: Dict[str, Any] = Field(default_factory=dict)
     unmapped_properties: Dict[str, Any] = Field(default_factory=dict)
 

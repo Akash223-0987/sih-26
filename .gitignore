@@ -48,6 +48,12 @@ data/
 
 # Fluent Bit & Collector State
 *.pos
+
+# ML Model Artifacts (security & storage)
+models/*.joblib
+models/*.bin
+models/*.pkl
+models/*_model*
 *.pos.old
 *.db
 fluent-bit.pos
