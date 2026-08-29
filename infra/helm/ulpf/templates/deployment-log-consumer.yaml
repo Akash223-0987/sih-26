@@ -18,10 +18,9 @@ spec:
           imagePullPolicy: {{ .Values.images.logConsumer.pullPolicy }}
           
           securityContext:
-          runAsNonRoot: true
-          runAsUser: 1000
-          allowPrivilegeEscalation: false
-
-          capabilities:
-           drop:
-            - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
