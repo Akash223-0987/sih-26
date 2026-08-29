@@ -27,6 +27,20 @@ from __future__ import annotations
 import json
 import re
 import uuid
+
+SENSITIVE_FIELDS = {
+    "password",
+    "passwd",
+    "token",
+    "access_token",
+    "refresh_token",
+    "authorization",
+    "api_key",
+    "apikey",
+    "secret",
+    "secret_key",
+    "client_secret",
+}
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -154,6 +168,28 @@ def _http_status_to_severity(status_code: int) -> str:
     if status_code >= 400:
         return "WARNING"
     return "INFO"
+
+
+def _sanitize_data(data):
+    """
+    Recursively mask sensitive values before logs are stored.
+    """
+
+    if isinstance(data, dict):
+        sanitized = {}
+
+        for key, value in data.items():
+            if str(key).lower() in SENSITIVE_FIELDS:
+                sanitized[key] = "***REDACTED***"
+            else:
+                sanitized[key] = _sanitize_data(value)
+
+        return sanitized
+
+    if isinstance(data, list):
+        return [_sanitize_data(item) for item in data]
+
+    return data
 
 
 def _normalize_json(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -522,7 +558,9 @@ def normalize(record: Dict[str, Any]) -> Dict[str, Any]:
             log_format = "syslog_rfc3164"
 
     normalizer_fn = _NORMALIZERS.get(log_format, _normalize_syslog_rfc3164)
-    canonical     = normalizer_fn(record)
+    
+    record = _sanitize_data(record)
+    canonical = normalizer_fn(record)
 
     if isinstance(canonical.get("extra_attributes"), dict):
         canonical["extra_attributes"] = json.dumps(canonical["extra_attributes"])
