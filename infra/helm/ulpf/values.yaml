@@ -6,12 +6,25 @@ replicaCount: 1
 
 images:
   logGenerator:
-    repository: metracer/log-generator
-    tag: latest
+    repository: swayam806/log-generator
+    tag: v1.0
     pullPolicy: IfNotPresent
   logConsumer:
-    repository: metracer/log-consumer
-    tag: latest
+    repository: swayam806/log-consumer
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  # Placeholders for future services
+  mlAnalyzer:
+    repository: swayam806/ml-analyzer
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  metricTraces:
+    repository: swayam806/metric-traces
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  anomalyDetector:
+    repository: swayam806/anomaly-detector
+    tag: v1.0
     pullPolicy: IfNotPresent
   fluentBit:
     repository: cr.fluentbit.io/fluent/fluent-bit
