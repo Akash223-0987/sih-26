@@ -14,15 +14,52 @@ Usage:
 """
 
 import argparse
+import datetime
+import json
 import random
 import sys
 import time
 import urllib.error
 import urllib.request
-import json
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 BASE_URL = "http://127.0.0.1:8000"
+
+
+def emit_perimeter_logs(log_dir: Optional[Path] = None, iteration: int = 1):
+    """Write multi-format perimeter logs to disk for Fluent Bit tailing in real time."""
+    if log_dir is None:
+        log_dir = Path(__file__).resolve().parent.parent.parent / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        iso_ts = now.isoformat()
+        syslog_ts = now.strftime("%b %d %H:%M:%S")
+        apache_ts = now.strftime("%d/%b/%Y:%H:%M:%S +0000")
+        win_ts = now.strftime("%Y-%m-%dT%H:%M:%S")
+        ip_suffix = iteration % 250 + 1
+
+        with open(log_dir / "syslog_rfc5424.log", "a", encoding="utf-8") as f:
+            f.write(f"<134>1 {iso_ts} fw-node-{iteration:02d} kernel {iteration} ID-{iteration:04d} - Firewall ACCEPT src=10.0.0.{ip_suffix} dst=8.8.8.8 dpt=443 proto=TCP\n")
+
+        with open(log_dir / "syslog_rfc3164.log", "a", encoding="utf-8") as f:
+            f.write(f"<190>{syslog_ts} router01 sshd[{iteration}]: Accepted publickey for admin from 192.168.1.{ip_suffix} port 51234 ssh2\n")
+
+        with open(log_dir / "cef.log", "a", encoding="utf-8") as f:
+            f.write(f"CEF:0|Palo Alto Networks|PAN-OS|10.1|threat/virus|Eicar-Test-File|8|src=10.0.0.{ip_suffix} dst=172.16.0.5 dpt=80 proto=TCP act=block app=web-browsing user=corp\\user-{iteration} deviceExternalId=PA-VM-01\n")
+
+        with open(log_dir / "leef.log", "a", encoding="utf-8") as f:
+            f.write(f"LEEF:2.0|IBM|QRadar SIEM|7.5|UserLogin|devTime={syslog_ts}\tsrc=192.168.1.{ip_suffix}\tdst=10.10.0.1\tusrName=analyst-{iteration}\tidentSrc=ActiveDirectory\toutcome=success\n")
+
+        with open(log_dir / "apache_access.log", "a", encoding="utf-8") as f:
+            f.write(f'192.168.1.{ip_suffix} - user-{iteration} [{apache_ts}] "POST /api/login HTTP/1.1" 200 1024 "https://corp.example.com" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"\n')
+
+        with open(log_dir / "windows_events.log", "a", encoding="utf-8") as f:
+            f.write(f"{win_ts},Security,4624,user-{iteration},WORKSTATION-{iteration:02d},192.168.1.{ip_suffix},Interactive Logon\n")
+    except Exception as e:
+        sys.stderr.write(f"[traffic_generator] Error writing perimeter logs: {e}\n")
+
 
 VENDORS = ["PaloAlto", "Cisco", "Fortinet", "Juniper", "CheckPoint", "Sophos"]
 DEVICE_TYPES = ["firewall", "router", "switch", "ips", "gateway", "waf"]
@@ -192,10 +229,13 @@ def run_cycle(iteration: int):
     if iteration % 3 == 0:
         simulate_diagnostics()
 
+    # Emit multi-format perimeter device logs for Fluent Bit
+    emit_perimeter_logs(iteration=iteration)
+
     # Device & Incident listings (GET)
     http_request("GET", "/api/v1/devices?zone=dmz")
     http_request("GET", "/api/v1/incidents?severity=CRITICAL")
-    print(f"--- [Cycle #{iteration}] Completed. Logs appended to logs/application.log ---\n")
+    print(f"--- [Cycle #{iteration}] Completed. Logs appended to logs/ in real time ---\n")
 
 
 def main():

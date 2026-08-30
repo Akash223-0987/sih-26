@@ -12,7 +12,9 @@ Modern enterprises generate logs in dozens of incompatible formats -- Syslog, CE
 **PyTrace / ULPF** solves this at both ends:
 
 - **Source side** -- A lightweight Python SDK (`pytrace`) auto-instruments applications and emits structured, lossless JSON events with W3C distributed tracing context built in.
-- **Pipeline side** -- A Fluent Bit collection layer with 7 format-specific parsers ingests logs from any perimeter device or application, normalizes them to a single canonical schema via a Kafka consumer, and persists them to ClickHouse (analytics) and Neo4j (threat-correlation graph).
+- **Log pipeline** -- Fluent Bit and Kafka ingest logs from perimeter devices and applications; the consumer normalizes them and persists them only to ClickHouse.
+- **Telemetry pipeline** -- OpenTelemetry receives metrics and traces and persists their service/span/metric relationships only to Neo4j.
+- **Detection pipeline** -- Both evidence streams are triaged by threat detection. Suspicious evidence invokes the ML API, and confirmed alerts reach the notification service.
 
 The result is a vendor-agnostic, containerized, air-gap-ready pipeline capable of handling billions of events per day.
 

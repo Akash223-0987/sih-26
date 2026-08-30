@@ -1,18 +1,17 @@
 import os
 import json
-import time
 import datetime
 from typing import Dict, List, Any
 from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
-import clickhouse_connect
+import httpx
+from neo4j import GraphDatabase
 
-# Database configuration
-CLICKHOUSE_HOST = os.environ.get("CLICKHOUSE_HOST", "clickhouse")
-CLICKHOUSE_PORT = int(os.environ.get("CLICKHOUSE_PORT", "8123"))
-CLICKHOUSE_DB = os.environ.get("CLICKHOUSE_DB", "ulpf")
-CLICKHOUSE_USER = os.environ.get("CLICKHOUSE_USER", "default")
-CLICKHOUSE_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
+# Graph database configuration. Metrics and traces never enter ClickHouse.
+NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
+NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password123")
+THREAT_DETECTION_URL = os.environ.get("THREAT_DETECTION_URL", "").strip()
 
 app = FastAPI(title="ULPF OpenTelemetry Metrics & Traces Ingestor")
 
@@ -26,66 +25,73 @@ stats = {
 anomalies: List[Dict[str, Any]] = []
 latest_device_metrics: Dict[str, Dict[str, Any]] = {}
 
-def get_clickhouse_client():
-    for attempt in range(1, 6):
-        try:
-            client = clickhouse_connect.get_client(
-                host=CLICKHOUSE_HOST,
-                port=CLICKHOUSE_PORT,
-                username=CLICKHOUSE_USER,
-                password=CLICKHOUSE_PASSWORD
-            )
-            client.command(f"CREATE DATABASE IF NOT EXISTS {CLICKHOUSE_DB}")
-            client.database = CLICKHOUSE_DB
-            print(f"[Telemetry Ingestor] Connected to ClickHouse on attempt {attempt}")
-            return client
-        except Exception as e:
-            print(f"[Telemetry Ingestor] Connection attempt {attempt} failed: {e}")
-            time.sleep(3)
-    return None
-
-ch_client = get_clickhouse_client()
-
-if ch_client:
+def get_neo4j_driver():
+    """Return an optional graph connection; telemetry ingestion must not block on it."""
     try:
-        ch_client.command("""
-        CREATE TABLE IF NOT EXISTS metrics (
-            timestamp DateTime64(3, 'UTC'),
-            metric_name LowCardinality(String),
-            metric_type LowCardinality(String),
-            value Float64,
-            unit String,
-            attributes String CODEC(ZSTD(3))
-        ) ENGINE = MergeTree()
-        PARTITION BY toYYYYMMDD(timestamp)
-        ORDER BY (metric_name, timestamp)
-        TTL toDateTime(timestamp) + INTERVAL 7 DAY DELETE;
-        """)
-        
-        ch_client.command("""
-        CREATE TABLE IF NOT EXISTS traces (
-            timestamp DateTime64(6, 'UTC'),
-            trace_id String,
-            span_id String,
-            parent_span_id String,
-            service_name LowCardinality(String),
-            span_name String,
-            kind LowCardinality(String),
-            duration_ms Float64,
-            status_code LowCardinality(String),
-            status_message String,
-            attributes String CODEC(ZSTD(3))
-        ) ENGINE = MergeTree()
-        PARTITION BY toYYYYMMDD(timestamp)
-        ORDER BY (service_name, span_name, timestamp)
-        TTL toDateTime(timestamp) + INTERVAL 7 DAY DELETE;
-        """)
-        print("[Telemetry Ingestor] ClickHouse telemetry tables initialized successfully.")
-    except Exception as e:
-        print(f"[Telemetry Ingestor] Schema initialization failed: {e}")
-else:
-    print("[Telemetry Ingestor] Warning: ClickHouse client offline. Tables will not be auto-initialized.")
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver.verify_connectivity()
+        print("[Telemetry Ingestor] Connected to Neo4j")
+        return driver
+    except Exception as exc:
+        print(f"[Telemetry Ingestor] Neo4j unavailable: {exc}")
+        return None
 
+
+neo4j_driver = get_neo4j_driver()
+
+
+def store_telemetry_graph(traces_rows, metrics_rows) -> None:
+    """Preserve service-to-span and service-to-metric relationships for correlation."""
+    if not neo4j_driver:
+        return
+    try:
+        with neo4j_driver.session() as session:
+            for row in traces_rows:
+                timestamp, trace_id, span_id, parent_span_id, service_name, span_name, _, duration_ms, status_code, _, _ = row
+                session.run(
+                    "MERGE (s:Service {name: $service}) "
+                    "MERGE (t:Trace {trace_id: $trace_id, span_id: $span_id}) "
+                    "SET t.name=$name, t.timestamp=$timestamp, t.duration_ms=$duration_ms, t.status=$status "
+                    "MERGE (s)-[:EMITTED]->(t)",
+                    service=service_name, trace_id=trace_id, span_id=span_id, name=span_name,
+                    timestamp=timestamp.isoformat(), duration_ms=duration_ms, status=status_code,
+                )
+                if parent_span_id:
+                    session.run(
+                        "MATCH (child:Trace {trace_id: $trace_id, span_id: $span_id}) "
+                        "MERGE (parent:Trace {trace_id: $trace_id, span_id: $parent_span_id}) "
+                        "MERGE (parent)-[:PARENT_OF]->(child)",
+                        trace_id=trace_id, span_id=span_id, parent_span_id=parent_span_id,
+                    )
+            for row in metrics_rows:
+                timestamp, metric_name, _, value, unit, attributes = row
+                attributes_dict = json.loads(attributes)
+                service_name = attributes_dict.get("service.name", "unknown_service")
+                session.run(
+                    "MERGE (s:Service {name: $service}) "
+                    "CREATE (m:Metric {name:$name, value:$value, unit:$unit, timestamp:$timestamp}) "
+                    "MERGE (s)-[:REPORTED]->(m)",
+                    service=service_name, name=metric_name, value=value, unit=unit, timestamp=timestamp.isoformat(),
+                )
+    except Exception as exc:
+        print(f"[Telemetry Ingestor] Neo4j graph write failed: {exc}")
+
+
+async def fan_out_to_threat_detection(traces_rows, metrics_rows) -> None:
+    """Send the same Neo4j telemetry evidence to the threat decision point."""
+    if not THREAT_DETECTION_URL:
+        return
+    evidence = []
+    for timestamp, trace_id, _, _, service, span, _, duration, status_code, _, _ in traces_rows:
+        evidence.append({"event_id": trace_id, "telemetry_data": {"service": service, "span": span, "duration_ms": duration, "status_code": status_code, "timestamp": timestamp.isoformat()}})
+    for timestamp, name, _, value, unit, attributes in metrics_rows:
+        evidence.append({"telemetry_data": {"metric_name": name, "metric_value": value, "unit": unit, "timestamp": timestamp.isoformat(), **json.loads(attributes)}})
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            for item in evidence:
+                await client.post(THREAT_DETECTION_URL, json=item)
+    except httpx.HTTPError as exc:
+        print(f"[Telemetry Ingestor] Threat-detection fan-out failed: {exc}")
 
 def parse_otel_attributes(attributes_list) -> Dict[str, Any]:
     attributes = {}
@@ -279,25 +285,13 @@ def parse_metrics_payload(payload: Dict[str, Any]):
 
 @app.post("/v1/traces", status_code=status.HTTP_200_OK)
 async def ingest_traces(request: Request):
-    global ch_client
     try:
         payload = await request.json()
         rows, detected_anomalies = parse_traces_payload(payload)
         
         if rows:
-            if not ch_client:
-                ch_client = get_clickhouse_client()
-            
-            if ch_client:
-                ch_client.insert(
-                    table="traces",
-                    data=rows,
-                    column_names=[
-                        "timestamp", "trace_id", "span_id", "parent_span_id", "service_name", 
-                        "span_name", "kind", "duration_ms", "status_code", "status_message", "attributes"
-                    ],
-                    database=CLICKHOUSE_DB
-                )
+            store_telemetry_graph(rows, [])
+            await fan_out_to_threat_detection(rows, [])
             
             stats["traces_received"] += len(rows)
             stats["anomalies_detected"] += len(detected_anomalies)
@@ -319,22 +313,13 @@ async def ingest_traces(request: Request):
 
 @app.post("/v1/metrics", status_code=status.HTTP_200_OK)
 async def ingest_metrics(request: Request):
-    global ch_client
     try:
         payload = await request.json()
         rows, detected_anomalies = parse_metrics_payload(payload)
         
         if rows:
-            if not ch_client:
-                ch_client = get_clickhouse_client()
-                
-            if ch_client:
-                ch_client.insert(
-                    table="metrics",
-                    data=rows,
-                    column_names=["timestamp", "metric_name", "metric_type", "value", "unit", "attributes"],
-                    database=CLICKHOUSE_DB
-                )
+            store_telemetry_graph([], rows)
+            await fan_out_to_threat_detection([], rows)
             
             stats["metrics_received"] += len(rows)
             stats["anomalies_detected"] += len(detected_anomalies)

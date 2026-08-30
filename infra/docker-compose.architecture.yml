@@ -1,0 +1,50 @@
+# Add this overlay to the existing core pipeline:
+# docker compose -f infra/docker-compose.yml -f infra/docker-compose.architecture.yml up --build
+services:
+  log-consumer:
+    environment:
+      THREAT_DETECTION_URL: http://threat-detection:8000/v1/evaluate
+    depends_on:
+      - threat-detection
+
+  telemetry-ingestor:
+    build:
+      context: ..
+      dockerfile: services/Metric-Traces service/Dockerfile
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password123
+      THREAT_DETECTION_URL: http://threat-detection:8000/v1/evaluate
+    ports:
+      - "4318:4318"
+    depends_on:
+      - neo4j
+
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    ports:
+      - "8003:8000"
+
+  threat-detection:
+    build:
+      context: ..
+      dockerfile: services/threat-detection/Dockerfile
+    environment:
+      ML_SERVICE_URL: http://ml-analyzer:8000/v1/infer
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000/v1/alerts
+      ALERT_RISK_THRESHOLD: "0.70"
+    ports:
+      - "8002:8000"
+    depends_on:
+      - ml-analyzer
+      - notification-service
+
+  anomaly-detector:
+    build:
+      context: ..
+      dockerfile: services/anomaly-detector/Dockerfile
+    ports:
+      - "8004:8000"

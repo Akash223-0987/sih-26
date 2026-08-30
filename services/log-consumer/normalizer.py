@@ -4,8 +4,7 @@ normalizer.py
 Universal Log Normalizer for the ULPF (Universal Log Pre-processing Framework).
 
 Translates raw Fluent Bit records — regardless of origin format — into the
-canonical schema consumed by ClickHouse (analytics store) and Neo4j
-(threat-correlation graph).
+canonical schema consumed by the ClickHouse log-evidence store.
 
 Format dispatch is driven by the ``log_format`` field that Fluent Bit's
 ``record_modifier`` filter stamps onto every event.  A heuristic fallback
