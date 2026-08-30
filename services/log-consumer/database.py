@@ -25,39 +25,33 @@ class DatabaseManager:
         self.connect_databases()
 
     def connect_databases(self):
-        """Attempts to establish connection to ClickHouse and Neo4j with a retry loop."""
-        for attempt in range(1, 11):
+        """Attempts to establish connection to ClickHouse and Neo4j independently."""
+        if not self.ch_client:
             try:
-                # 1. Connect to ClickHouse
-                if not self.ch_client:
-                    print(f"[Storage] Connecting to ClickHouse ({CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}) - Attempt {attempt}/10")
-                    self.ch_client = clickhouse_connect.get_client(
-                        host=CLICKHOUSE_HOST,
-                        port=CLICKHOUSE_PORT,
-                        username=CLICKHOUSE_USER,
-                        password=CLICKHOUSE_PASSWORD
-                    )
-                    # Switch to correct database
-                    self.ch_client.database = CLICKHOUSE_DB
-                    print("[Storage] ClickHouse connection established.")
-
-                # 2. Connect to Neo4j
-                if not self.neo4j_driver:
-                    print(f"[Storage] Connecting to Neo4j ({NEO4J_URI}) - Attempt {attempt}/10")
-                    self.neo4j_driver = GraphDatabase.driver(
-                        NEO4J_URI, 
-                        auth=(NEO4J_USER, NEO4J_PASSWORD)
-                    )
-                    self.neo4j_driver.verify_connectivity()
-                    print("[Storage] Neo4j connection established.")
-                
-                break
+                print(f"[Storage] Connecting to ClickHouse ({CLICKHOUSE_HOST}:{CLICKHOUSE_PORT})...")
+                self.ch_client = clickhouse_connect.get_client(
+                    host=CLICKHOUSE_HOST,
+                    port=CLICKHOUSE_PORT,
+                    username=CLICKHOUSE_USER,
+                    password=CLICKHOUSE_PASSWORD
+                )
+                self.ch_client.database = CLICKHOUSE_DB
+                print("[Storage] ClickHouse connection established.")
             except Exception as e:
-                print(f"[Storage] Connection attempt {attempt} failed: {e}")
-                time.sleep(4)
-        
-        if not self.ch_client or not self.neo4j_driver:
-            print("[Storage] Warning: Databases are offline. Will retry on demand during write cycles.")
+                print(f"[Storage] ClickHouse connection failed: {e}")
+
+        if not self.neo4j_driver:
+            try:
+                print(f"[Storage] Connecting to Neo4j ({NEO4J_URI})...")
+                driver = GraphDatabase.driver(
+                    NEO4J_URI, 
+                    auth=(NEO4J_USER, NEO4J_PASSWORD)
+                )
+                driver.verify_connectivity()
+                self.neo4j_driver = driver
+                print("[Storage] Neo4j connection established.")
+            except Exception as e:
+                print(f"[Storage] Neo4j connection failed (will retry on demand): {e}")
 
     # ==================== CLICKHOUSE BATCHING WRITES ====================
     
