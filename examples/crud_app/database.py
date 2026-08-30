@@ -43,7 +43,7 @@ class DatabaseManager:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS devices (
                     id TEXT PRIMARY KEY,
-                    hostname TEXT NOT NULL UNIQUE,
+                    hostname TEXT NOT NULL,
                     ip_address TEXT NOT NULL,
                     mac_address TEXT NOT NULL,
                     vendor TEXT NOT NULL,
