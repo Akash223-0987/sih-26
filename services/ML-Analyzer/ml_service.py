@@ -196,6 +196,74 @@ async def health(request: Request) -> Dict[str, Any]:
     }
 
 
+def _ml_model_predict(payload: TelemetryPayload, artifact: Dict[str, Any]) -> ThreatPredictionResponse:
+    """Execute LightGBM model inference with feature scaling, protocol encoding, and risk stratification."""
+    labels = ["Benign", "Brute Force", "Lateral Movement", "Exfiltration", "Port Scan"]
+    
+    num_vals = np.array([[
+        float(payload.bytes_in),
+        float(payload.bytes_out),
+        float(payload.src_port),
+        float(payload.dst_port),
+        float(payload.auth_failures),
+        float(payload.auth_successes),
+        float(payload.in_degree),
+        float(payload.avg_span_duration_ms),
+        float(payload.max_call_depth),
+        float(payload.error_flag),
+    ]])
+    
+    scaler = artifact.get("scaler")
+    scaled_num = scaler.transform(num_vals) if scaler is not None else num_vals
+
+    protocol_str = str(payload.protocol or "unknown").casefold()
+    protocol_lookup = artifact.get("protocol_lookup", {})
+    if protocol_str in protocol_lookup:
+        encoded_proto = protocol_lookup[protocol_str].reshape(1, -1)
+    else:
+        encoded_proto = artifact.get("unknown_protocol_vector", np.zeros((1, 1))).reshape(1, -1)
+
+    X = np.column_stack([scaled_num, encoded_proto])
+    model = artifact["model"]
+    probs_raw = model.predict_proba(X)[0]
+    
+    label_encoder = artifact.get("label_encoder")
+    classes = list(label_encoder.classes_) if label_encoder is not None else labels
+    
+    probabilities = {cls_name: float(probs_raw[i]) for i, cls_name in enumerate(classes) if cls_name in labels}
+    for l in labels:
+        if l not in probabilities:
+            probabilities[l] = 0.0
+
+    # Rule guardrail alignment for deterministic safety:
+    rule_res = _fast_rule_prediction(payload)
+    if rule_res.threat_label != "Benign" and rule_res.confidence_score >= 0.80:
+        top_label = rule_res.threat_label
+        confidence = rule_res.confidence_score
+    else:
+        top_idx = int(np.argmax(probs_raw))
+        top_label = classes[top_idx] if top_idx < len(classes) else "Benign"
+        confidence = float(probs_raw[top_idx])
+
+    probabilities[top_label] = max(probabilities.get(top_label, 0.0), confidence)
+    prob_sum = sum(probabilities.values())
+    if prob_sum > 0:
+        probabilities = {k: float(v / prob_sum) for k, v in probabilities.items()}
+
+    anomaly_score = float(1.0 - probabilities.get("Benign", 0.0))
+    is_anomaly = top_label != "Benign" or confidence < 0.60 or anomaly_score >= 0.70
+    risk_level = _stratify_risk(top_label, confidence, anomaly_score)
+
+    return ThreatPredictionResponse(
+        event_id=payload.event_id,
+        threat_label=top_label,
+        confidence_score=confidence,
+        is_anomaly=is_anomaly,
+        risk_level=risk_level,
+        probabilities=probabilities,
+    )
+
+
 @app.post("/predict-threat", response_model=ThreatPredictionResponse)
 async def predict_threat(
     payload: TelemetryPayload, request: Request
@@ -206,9 +274,10 @@ async def predict_threat(
         raise HTTPException(status_code=503, detail="threat model is not ready")
 
     try:
+        if "model" in artifact:
+            return _ml_model_predict(payload, artifact)
         return _fast_rule_prediction(payload)
     except Exception as exc:
         logger.exception("Threat inference failed for event_id=%s", payload.event_id)
-        raise HTTPException(
-            status_code=422, detail="invalid telemetry payload"
-        ) from exc
+        return _fast_rule_prediction(payload)
+
