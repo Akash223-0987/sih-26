@@ -7,3 +7,8 @@ from pathlib import Path
 _ml_analyzer_dir = str(Path(__file__).parent.parent / "services" / "ML-Analyzer")
 if _ml_analyzer_dir not in sys.path:
     sys.path.insert(0, _ml_analyzer_dir)
+
+_anomaly_dir = str(Path(__file__).parent.parent / "services" / "anomaly-detector")
+if _anomaly_dir not in sys.path:
+    sys.path.insert(0, _anomaly_dir)
+
