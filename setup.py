@@ -17,7 +17,7 @@ setup(
     long_description_content_type="text/markdown",
     author="Aryan-202 / PyTrace Contributors",
     url="https://github.com/Aryan-202/sih-26",
-    packages=find_packages(include=["pytrace", "pytrace.*"]),
+    packages=find_packages(include=["pytrace", "pytrace.*", "services", "services.*"]),
     install_requires=REQUIREMENTS,
     python_requires=">=3.9",
     classifiers=[

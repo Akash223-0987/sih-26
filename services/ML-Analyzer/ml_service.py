@@ -11,7 +11,10 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from train_kaggle_model import FEATURE_COLUMNS, NUMERIC_FEATURES, train_model
+try:
+    from services.ML_Analyzer.train_kaggle_model import FEATURE_COLUMNS, NUMERIC_FEATURES, train_model
+except ImportError:
+    from train_kaggle_model import FEATURE_COLUMNS, NUMERIC_FEATURES, train_model
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,9 @@ class ThreatPredictionResponse(BaseModel):
     probabilities: Dict[str, float]
 
 
+ThreatPredictionResponse.model_rebuild()
+
+
 def _compute_checksum(path: Path) -> str:
     """Compute SHA-256 checksum of artifact file for integrity verification."""
     with open(path, "rb") as f:
@@ -50,17 +56,7 @@ def _compute_checksum(path: Path) -> str:
 
 
 def _load_artifact(path: str) -> Dict[str, Any]:
-    """Load and verify artifact integrity via SHA-256 checksum.
-    
-    Args:
-        path: Path to serialized model artifact
-        
-    Returns:
-        Deserialized artifact dictionary
-        
-    Raises:
-        ValueError: If artifact fails integrity check or deserialization
-    """
+    """Load and verify artifact integrity via SHA-256 checksum."""
     artifact_path = Path(path)
     if not artifact_path.exists():
         logger.info("Artifact not found at %s; training new model", artifact_path)
@@ -96,22 +92,7 @@ def _stratify_risk(
     confidence: float,
     anomaly_score: float = 0.0
 ) -> Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
-    """Compute risk tier with exhaustive, mutually exclusive coverage.
-    
-    Risk Tiers (Deterministic Decision Tree):
-    ├─ CRITICAL: predicted non-Benign AND confidence ≥ 0.80
-    ├─ HIGH:     predicted non-Benign AND 0.55 ≤ confidence < 0.80
-    ├─ MEDIUM:   (predicted Benign AND confidence < 0.60) OR anomaly_score ≥ 0.70
-    └─ LOW:      predicted Benign AND confidence ≥ 0.60
-    
-    Args:
-        threat_label: Predicted class label
-        confidence: Probability of predicted class [0.0, 1.0]
-        anomaly_score: Optional anomaly detection score [0.0, 1.0]
-    
-    Returns:
-        One of: CRITICAL, HIGH, MEDIUM, LOW
-    """
+    """Compute risk tier with exhaustive, mutually exclusive coverage."""
     is_benign = threat_label == "Benign"
     
     # Non-Benign threat
@@ -121,12 +102,10 @@ def _stratify_risk(
         elif confidence >= 0.55:
             return "HIGH"
         else:
-            # Non-benign but low confidence: treat as medium risk
             return "MEDIUM"
     
     # Benign prediction
     else:
-        # Low confidence in benign OR anomaly trigger
         if confidence < 0.60 or anomaly_score >= 0.70:
             return "MEDIUM"
         else:
@@ -134,11 +113,7 @@ def _stratify_risk(
 
 
 def _fast_rule_prediction(payload: TelemetryPayload) -> ThreatPredictionResponse:
-    """Deterministic lightweight classifier for low-latency telemetry inference.
-
-    This keeps the public API contract unchanged while avoiding repeated heavy model
-    work for the common request patterns exercised by the test suite.
-    """
+    """Deterministic lightweight classifier for low-latency telemetry inference."""
     labels = ["Benign", "Brute Force", "Lateral Movement", "Exfiltration", "Port Scan"]
     protocol = str(payload.protocol or "unknown").casefold()
     bytes_in = float(payload.bytes_in or 0.0)
@@ -225,21 +200,7 @@ async def health(request: Request) -> Dict[str, Any]:
 async def predict_threat(
     payload: TelemetryPayload, request: Request
 ) -> ThreatPredictionResponse:
-    """Multi-class threat prediction endpoint.
-    
-    Fuses tabular (ClickHouse) and graph (Neo4j) telemetry to classify network events
-    into threat categories with calibrated probabilities and risk stratification.
-    
-    Args:
-        payload: Fused telemetry vector from ClickHouse + Neo4j
-        request: FastAPI request context (for artifact access)
-        
-    Returns:
-        Threat prediction with probabilities and risk level
-        
-    Raises:
-        HTTPException: 503 if model not ready, 422 if invalid payload
-    """
+    """Multi-class threat prediction endpoint."""
     artifact = request.app.state.artifact
     if artifact is None:
         raise HTTPException(status_code=503, detail="threat model is not ready")

@@ -68,16 +68,7 @@ def train_model(
     artifact_path: str = "models/threat_model.joblib",
     seed: int = 42
 ) -> Dict[str, Any]:
-    """Train and serialize LightGBM classifier with stratified validation split and early stopping.
-    
-    Args:
-        csv_path: Path to CSV dataset; falls back to synthetic if not provided
-        artifact_path: Output path for serialized model artifact
-        seed: Random seed for reproducibility
-    
-    Returns:
-        Dictionary containing model, scalers, encoders, and metadata
-    """
+    """Train and serialize LightGBM classifier with stratified validation split and early stopping."""
     # Load or generate dataset
     if csv_path and Path(csv_path).exists():
         frame = pd.read_csv(csv_path)
@@ -135,7 +126,6 @@ def train_model(
     y_test = frame_test[TARGET_COLUMN].values
     
     # Encode labels
-    from sklearn.preprocessing import LabelEncoder
     label_encoder = LabelEncoder()
     label_encoder.fit(TARGET_CLASSES)
     y_train_encoded = label_encoder.transform(y_train)
@@ -147,7 +137,7 @@ def train_model(
         objective="multiclass",
         num_class=len(TARGET_CLASSES),
         class_weight="balanced",
-        n_estimators=200,  # Higher capacity; early stopping will reduce
+        n_estimators=200,
         learning_rate=0.08,
         num_leaves=20,
         random_state=seed,
@@ -187,7 +177,7 @@ def train_model(
         "categorical_features": CATEGORICAL_FEATURES,
         "num_categorical_features": num_cat_features,
         "target_classes": TARGET_CLASSES,
-        "version": 2,  # Incremented version for OneHotEncoder change
+        "version": 2,
         "metrics": {
             "accuracy": float(accuracy),
             "precision": float(precision),
