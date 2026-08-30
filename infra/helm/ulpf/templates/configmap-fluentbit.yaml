@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-fluentbit-config
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        1
+        Log_Level    info
+
+    [INPUT]
+        Name              tail
+        Path              /logs/*.log
+        Tag               enterprise.*
+        Read_from_Head   true
+        Refresh_Interval  1
+
+    [OUTPUT]
+        Name              kafka
+        Match             *
+        Brokers           {{ .Release.Name }}-kafka:9092
+        Format            json 
+        Topics            enterprise-logs

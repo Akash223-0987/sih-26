@@ -1,0 +1,48 @@
+  # Default values for ulpf.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+images:
+  logGenerator:
+    repository: swayam806/log-generator
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  logConsumer:
+    repository: swayam806/log-consumer
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  # Placeholders for future services
+  mlAnalyzer:
+    repository: swayam806/ml-analyzer
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  metricTraces:
+    repository: swayam806/metric-traces
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  anomalyDetector:
+    repository: swayam806/anomaly-detector
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  fluentBit:
+    repository: cr.fluentbit.io/fluent/fluent-bit
+    tag: "4.1"
+  kafka:
+    repository: apache/kafka
+    tag: 4.0.2
+  clickhouse:
+    repository: clickhouse/clickhouse-server
+    tag: 23.8-alpine
+  neo4j:
+    repository: neo4j
+    tag: 5.12-community
+
+neo4j:
+  auth: "neo4j/password123"
+
+clickhouse:
+  user: "default"
+  password: ""
+  db: "ulpf"

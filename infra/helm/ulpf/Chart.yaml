@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ulpf
+description: A Helm chart for the Universal Log Pre-processing Framework (Metracer)
+type: application
+version: 0.1.1
+appVersion: "1.0.0"

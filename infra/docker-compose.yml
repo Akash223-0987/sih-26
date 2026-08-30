@@ -11,7 +11,6 @@ services:
     volumes:
       - log-data:/logs:ro
       - ../config/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
-      - ../config/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
     depends_on:
       - log-generator
       - kafka

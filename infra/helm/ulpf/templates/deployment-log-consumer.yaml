@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-log-consumer
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: log-consumer
+  template:
+    metadata:
+      labels:
+        app: log-consumer
+    spec:
+      containers:
+        - name: log-consumer
+          image: "{{ .Values.images.logConsumer.repository }}:{{ .Values.images.logConsumer.tag }}"
+          imagePullPolicy: {{ .Values.images.logConsumer.pullPolicy }}
+          
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

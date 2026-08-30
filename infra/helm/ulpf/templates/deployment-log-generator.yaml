@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-log-generator
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: log-generator
+  template:
+    metadata:
+      labels:
+        app: log-generator
+    spec:
+      containers:
+        - name: log-generator
+          image: "{{ .Values.images.logGenerator.repository }}:{{ .Values.images.logGenerator.tag }}"
+          imagePullPolicy: {{ .Values.images.logGenerator.pullPolicy }}
+          volumeMounts:
+            - name: log-data
+              mountPath: /logs
+      volumes:
+        - name: log-data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-log-data
