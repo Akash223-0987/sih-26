@@ -76,7 +76,7 @@ def generate_dataset(rows: int = 50000, seed: int = 42) -> pd.DataFrame:
     malformed_indices = ood_indices[ood_count // 2:]
     for index in malformed_indices:
         column = str(rng.choice(NUMERIC_FEATURES))
-        frame.loc[index, column] = rng.choice(["n/a", "-", "overflow", None])
+        frame.loc[index, column] = rng.choice(["n/a", "-", "overflow", "nan"])
     return frame
 
 

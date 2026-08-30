@@ -49,13 +49,13 @@ def _prepare_features(
     if fit:
         scaled = scaler.fit_transform(numeric.to_numpy())
         # Fit on all known protocols + unknown category
-        protocol_encoder.fit(categorical.values.reshape(-1, 1))
+        protocol_encoder.fit(np.asarray(categorical).reshape(-1, 1))
     else:
         scaled = scaler.transform(numeric.to_numpy())
     
     # One-hot encode with handle_unknown='ignore' (unknown -> all zeros)
     # Convert sparse matrix to dense array if needed
-    encoded_sparse = protocol_encoder.transform(categorical.values.reshape(-1, 1))
+    encoded_sparse = protocol_encoder.transform(np.asarray(categorical).reshape(-1, 1))
     encoded = encoded_sparse.toarray() if hasattr(encoded_sparse, 'toarray') else encoded_sparse
     feature_matrix = np.column_stack([scaled, encoded])
     num_cat_features = encoded.shape[1]
