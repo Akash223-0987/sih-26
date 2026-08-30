@@ -37,18 +37,40 @@ examples/crud_app/
 
 ---
 
-## 🚀 How to Run the Application
+## 🚀 How to Run the Application & Faculty Presentation
 
-### Step 1: Start the FastAPI Server
+You can run `examples/crud_app/main.py` in multiple ways during your presentation:
 
-From the repository root:
+### Option 1: Interactive Faculty Presentation Menu (Recommended for Demos)
+Run without any arguments to see the interactive launcher menu:
+```bash
+python examples/crud_app/main.py
+```
+This lets you select on-the-spot:
+1. **Start FastAPI CRUD Server** (Swagger UI at `http://127.0.0.1:8000/docs`)
+2. **Run SIH 4-Phase Demo Orchestrator** (Full terminal presentation with ML & Neo4j graph)
+3. **Run Live Integrated Telemetry Demo** (Executes live CRUD transactions + normalizes live logs)
+4. **Run Automated Traffic Generator** (Continuous synthetic traffic)
+
+---
+
+### Option 2: Direct CLI Flags
 
 ```bash
-# Run with Python module
-python -m examples.crud_app.main
+# 1. Run the Full 4-Phase SIH Presentation Orchestrator directly:
+python examples/crud_app/main.py --demo
 
-# Or run with Uvicorn
-uvicorn examples.crud_app.main:app --host 127.0.0.1 --port 8000 --reload
+# 2. Run the Live Integrated CRUD + Normalization demo:
+python examples/crud_app/main.py --live
+
+# 3. Start the FastAPI Web Server with Swagger Docs:
+python examples/crud_app/main.py --server
+
+# 4. Automated Walkthrough (for screen recording / timed transitions):
+python examples/crud_app/main.py --auto --delay 3
+
+# 5. Fast Execution (for quick evaluation / CI):
+python examples/crud_app/main.py --fast
 ```
 
 Once running:
