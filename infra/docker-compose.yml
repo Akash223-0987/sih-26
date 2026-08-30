@@ -4,15 +4,15 @@ services:
     build:
       context: ../services/log-generator
     volumes:
-      - log-data:/logs
+      - ../logs:/logs
 
   fluent-bit:
     image: cr.fluentbit.io/fluent/fluent-bit:4.1
     volumes:
-      - log-data:/logs:ro
+      - ../logs:/logs:ro
       - ../config/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ../config/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
     depends_on:
-      - log-generator
       - kafka
 
   kafka:
@@ -37,11 +37,9 @@ services:
       dockerfile: services/log-consumer/Dockerfile
     environment:
       CLICKHOUSE_HOST: clickhouse
-      NEO4J_URI: bolt://neo4j:7687
     depends_on:
       - kafka
       - clickhouse
-      - neo4j
     restart: always
 
   ml-analyzer:
@@ -51,9 +49,9 @@ services:
     environment:
       KAFKA_BROKER: kafka:9092
       ENABLE_KAFKA: "true"
-      KAFKA_INPUT_TOPIC: logs.raw
+      KAFKA_INPUT_TOPIC: enterprise-logs
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       - kafka
     restart: always
@@ -103,6 +101,5 @@ services:
       - neo4j
 
 volumes:
-  log-data:
   clickhouse-data:
   neo4j-data:

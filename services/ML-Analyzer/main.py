@@ -26,6 +26,19 @@ _kafka_consumer: Any = None
 _kafka_producer: Any = None
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await asyncio.to_thread(pipeline.warmup)
+    start_kafka_worker()
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(stop_kafka_worker)
+
+
+app = FastAPI(title="ULPF ML Inference", version="1.0.0", lifespan=lifespan)
+
+
 class InferenceRequest(BaseModel):
     log: Any
 
@@ -97,16 +110,3 @@ def stop_kafka_worker() -> None:
         _kafka_consumer.wakeup()
     if _worker_thread is not None:
         _worker_thread.join(timeout=5)
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    await asyncio.to_thread(pipeline.warmup)
-    start_kafka_worker()
-    try:
-        yield
-    finally:
-        await asyncio.to_thread(stop_kafka_worker)
-
-
-app = FastAPI(title="ULPF ML Inference", version="1.0.0", lifespan=lifespan)

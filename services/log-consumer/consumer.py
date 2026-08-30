@@ -25,14 +25,13 @@ BATCH_SIZE
 BATCH_TIMEOUT_S
     Wall-clock seconds between time-based flushes.  Ensures low-latency
     delivery even when event volume is sparse.
-PRUNE_INTERVAL
-    Seconds between Neo4j graph pruning cycles.  Old relationships and
-    orphan nodes are deleted to keep the graph size bounded.
 """
 
 import json
 import logging
+import os
 import time
+import urllib.request
 from confluent_kafka import Consumer, KafkaError
 
 from normalizer import normalize
@@ -48,7 +47,7 @@ KAFKA_BROKER    = "kafka:9092"
 TOPIC_NAME      = "enterprise-logs"
 BATCH_SIZE      = 100
 BATCH_TIMEOUT_S = 5.0
-PRUNE_INTERVAL  = 3600
+THREAT_DETECTION_URL = os.getenv("THREAT_DETECTION_URL", "").strip()
 
 
 def main() -> None:
@@ -58,8 +57,7 @@ def main() -> None:
     Connects to Kafka and enters a continuous poll loop.  Each iteration
     checks whether the time-based flush threshold has been exceeded before
     processing the next message, ensuring bounded latency independently of
-    throughput.  A separate timer triggers periodic Neo4j graph pruning
-    without requiring a dedicated background thread.
+    throughput.
 
     The loop terminates gracefully on ``KeyboardInterrupt``, flushing any
     buffered records before closing the Kafka consumer and database connections.
@@ -79,7 +77,6 @@ def main() -> None:
     db            = DatabaseManager()
     batch: list   = []
     last_flush_ts = time.monotonic()
-    last_prune_ts = time.monotonic()
 
     try:
         while True:
@@ -90,10 +87,6 @@ def main() -> None:
                 _flush(db, batch)
                 batch         = []
                 last_flush_ts = time.monotonic()
-
-            if time.monotonic() - last_prune_ts >= PRUNE_INTERVAL:
-                db.prune_old_graph_data(retention_days=7)
-                last_prune_ts = time.monotonic()
 
             if msg is None:
                 continue
@@ -142,13 +135,11 @@ def main() -> None:
 
 def _flush(db: DatabaseManager, batch: list) -> None:
     """
-    Persist a batch of canonical records to ClickHouse and Neo4j.
+    Persist a batch of canonical records to ClickHouse only.
 
     Inserts all records as a single columnar batch into ClickHouse for
-    optimal MergeTree write performance.  Subsequently iterates the batch
-    and calls the Neo4j correlator for each record that carries network
-    identifiers (source or destination IP), skipping pure application logs
-    that have no network graph value.
+    optimal MergeTree write performance. Neo4j is intentionally reserved for
+    the OpenTelemetry metrics-and-traces branch.
 
     Parameters
     ----------
@@ -157,11 +148,19 @@ def _flush(db: DatabaseManager, batch: list) -> None:
     batch:
         List of canonical record dicts as returned by :func:`normalizer.normalize`.
     """
-    logger.info(f"Flushing batch of {len(batch)} records to ClickHouse + Neo4j ...")
+    logger.info(f"Flushing batch of {len(batch)} records to ClickHouse ...")
     db.insert_logs_batch(batch)
-    for record in batch:
-        if record.get("src_ip") or record.get("dest_ip"):
-            db.correlate_in_neo4j(record)
+    # Fan out the stored ClickHouse evidence to threat detection. The detector
+    # decides whether the costly ML API needs to be called.
+    if THREAT_DETECTION_URL:
+        for record in batch:
+            try:
+                payload = json.dumps({"event_id": str(record.get("event_id", "")), "log_data": record}).encode("utf-8")
+                request = urllib.request.Request(THREAT_DETECTION_URL, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(request, timeout=2):
+                    pass
+            except Exception as exc:
+                logger.warning("Threat-detection fan-out failed: %s", exc)
 
 
 if __name__ == "__main__":
