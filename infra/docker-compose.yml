@@ -35,8 +35,13 @@ services:
     build:
       context: ../
       dockerfile: services/log-consumer/Dockerfile
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      NEO4J_URI: bolt://neo4j:7687
     depends_on:
       - kafka
+      - clickhouse
+      - neo4j
     restart: always
 
   ml-analyzer:

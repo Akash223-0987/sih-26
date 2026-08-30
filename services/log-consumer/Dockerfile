@@ -5,6 +5,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY services/log-consumer/consumer.py .
+COPY services/log-consumer/ .
 
 CMD ["python", "-u", "consumer.py"]

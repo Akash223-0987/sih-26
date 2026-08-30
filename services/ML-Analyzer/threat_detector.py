@@ -5,7 +5,10 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 import httpx
 
-from telemetry_connector import TelemetryAggregator
+try:
+    from services.ML_Analyzer.telemetry_connector import TelemetryAggregator
+except ImportError:
+    from telemetry_connector import TelemetryAggregator
 
 logger = logging.getLogger(__name__)
 
