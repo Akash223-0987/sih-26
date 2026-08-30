@@ -63,7 +63,13 @@ flb-state/
 # Environment Variables & Secrets
 .env
 .env.*
+*.env
+.env.local
+.env.development
+.env.test
+.env.production
 !.env.example
+
 
 # Unit Test, Coverage, and Type Checking
 .pytest_cache/
