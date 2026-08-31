@@ -1,0 +1,636 @@
+{
+  "uid": "ulpf-security-ops",
+  "title": "ULPF Security Operations",
+  "description": "Real-time security monitoring dashboard for the Universal Log Pre-processing Framework (ULPF). Visualizes log ingestion, threat alerts, severity distribution, and top source IPs from ClickHouse.",
+  "tags": ["ulpf", "security", "logs", "alerts", "clickhouse"],
+  "timezone": "browser",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "severity_filter",
+        "label": "Severity",
+        "type": "custom",
+        "current": {
+          "text": "All",
+          "value": ""
+        },
+        "options": [
+          { "text": "All", "value": "", "selected": true },
+          { "text": "CRITICAL", "value": "CRITICAL", "selected": false },
+          { "text": "ERROR", "value": "ERROR", "selected": false },
+          { "text": "WARNING", "value": "WARNING", "selected": false },
+          { "text": "INFO", "value": "INFO", "selected": false },
+          { "text": "DEBUG", "value": "DEBUG", "selected": false }
+        ],
+        "query": "",
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "name": "log_source_filter",
+        "label": "Log Source",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": ""
+        },
+        "query": "SELECT DISTINCT log_source FROM ulpf.logs_normalized ORDER BY log_source",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "refresh": 2
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Events (24h)",
+      "description": "Total number of normalized log events ingested in the selected time range.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#73BF69", "value": null },
+              { "color": "#FF9830", "value": 10000 },
+              { "color": "#F2495C", "value": 100000 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT count() AS total_events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Active Alerts (24h)",
+      "description": "Total security alerts generated in the selected time range.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#73BF69", "value": null },
+              { "color": "#FF9830", "value": 10 },
+              { "color": "#F2495C", "value": 50 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT count() AS active_alerts FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Unique Source IPs",
+      "description": "Number of distinct source IPs seen in the selected time range.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#3274D9", "value": null },
+              { "color": "#FF9830", "value": 100 },
+              { "color": "#F2495C", "value": 500 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT uniqExact(src_ip) AS unique_ips FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime AND src_ip != ''",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Log Formats Ingested",
+      "description": "Number of distinct log source formats seen.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#8F3BB8" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT uniqExact(log_source) AS log_formats FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Log Ingestion Rate",
+      "description": "Number of log events ingested per minute over time.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 5 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Events / min",
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["mean", "max", "sum"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT $__timeInterval(timestamp) AS time, count() AS events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY time ORDER BY time",
+          "refId": "A",
+          "format": 0,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Events by Severity",
+      "description": "Distribution of log events by severity level.",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "CRITICAL" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2495C" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ERROR" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "WARNING" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FADE2A" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "INFO" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#73BF69" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "DEBUG" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3274D9" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "tooltip": { "mode": "single" },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT severity, count() AS events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY severity ORDER BY events DESC",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Top 10 Source IPs",
+      "description": "Source IP addresses generating the most log events.",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "fillOpacity": 80,
+            "gradientMode": "hue",
+            "lineWidth": 1
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "barWidth": 0.7,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "hidden" },
+        "tooltip": { "mode": "single" },
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT src_ip, count() AS events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime AND src_ip != '' GROUP BY src_ip ORDER BY events DESC LIMIT 10",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Log Source Distribution",
+      "description": "Breakdown of events by originating log source/format.",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 13 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "tooltip": { "mode": "single" },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT log_source, count() AS events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY log_source ORDER BY events DESC",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Alerts by Severity",
+      "description": "Distribution of security alerts by severity level.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 13 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#73BF69", "value": null },
+              { "color": "#FF9830", "value": 5 },
+              { "color": "#F2495C", "value": 20 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": true
+        },
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "minVizWidth": 0,
+        "minVizHeight": 10
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT severity, count() AS alerts FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY severity ORDER BY alerts DESC",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Alert Timeline",
+      "description": "Security alerts over time, grouped by severity.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Alerts",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "gradientMode": "scheme",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "CRITICAL" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2495C" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "HIGH" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "MEDIUM" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FADE2A" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "LOW" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#73BF69" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT $__timeInterval(timestamp) AS time, severity, count() AS alerts FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY time, severity ORDER BY time",
+          "refId": "A",
+          "format": 0,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Recent Alerts",
+      "description": "Most recent security alerts with full details.",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 29 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "severity" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "CRITICAL": { "text": "🔴 CRITICAL", "color": "#F2495C" } } },
+                  { "type": "value", "options": { "HIGH": { "text": "🟠 HIGH", "color": "#FF9830" } } },
+                  { "type": "value", "options": { "MEDIUM": { "text": "🟡 MEDIUM", "color": "#FADE2A" } } },
+                  { "type": "value", "options": { "LOW": { "text": "🟢 LOW", "color": "#73BF69" } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "timestamp" },
+            "properties": [
+              { "id": "unit", "value": "dateTimeAsIso" },
+              { "id": "custom.width", "value": 180 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "description" },
+            "properties": [
+              { "id": "custom.width", "value": 400 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false },
+        "sortBy": [{ "desc": true, "displayName": "timestamp" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT timestamp, rule_name, severity, description, src_ip, user_name FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime ORDER BY timestamp DESC LIMIT 50",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Top Alerted IPs",
+      "description": "Source IPs that appear most frequently in security alerts.",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 29 },
+      "datasource": { "type": "grafana-clickhouse-datasource" },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-reds"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "lineWidth": 1
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "barWidth": 0.7,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "hidden" },
+        "tooltip": { "mode": "single" },
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource" },
+          "rawSql": "SELECT src_ip, count() AS alerts FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime AND src_ip != '' GROUP BY src_ip ORDER BY alerts DESC LIMIT 10",
+          "refId": "A",
+          "format": 1,
+          "queryType": "sql",
+          "meta": { "builderOptions": { "mode": "list" } }
+        }
+      ]
+    }
+  ]
+}

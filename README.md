@@ -1,4 +1,4 @@
-﻿# PyTrace
+# PyTrace
 
 > **Universal Log Pre-processing Framework (ULPF) with Python SDK**
 > *Ingest any log format. Normalize to a single schema. Feed every SIEM and analytics platform.*
@@ -137,6 +137,7 @@ Once running, the log generator emits all 7 log formats every 2 seconds. Fluent 
 | Kafka broker | `localhost:9092` |
 | ClickHouse HTTP API | `http://localhost:8123` |
 | Neo4j Browser | `http://localhost:7474` |
+| Grafana Dashboard | `http://localhost:3000` *(requires Grafana overlay)* |
 
 Default Neo4j credentials: `neo4j` / `password123`
 
@@ -156,6 +157,34 @@ MATCH (src:IP)-[r:CONNECTED_TO]->(dst:IP)
 RETURN src.address, dst.address, r.protocol, r.timestamp
 ORDER BY r.timestamp DESC
 LIMIT 25;
+```
+
+---
+
+### Dashboard (Grafana)
+
+To add the Grafana security operations dashboard, launch the stack with the Grafana overlay:
+
+```bash
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.grafana.yml up --build
+```
+
+Open `http://localhost:3000` in your browser. Default credentials: `admin` / `admin`.
+
+The **ULPF Security Operations** dashboard is pre-provisioned and will be set as the home dashboard. It includes panels for:
+- Total events, active alerts, unique source IPs, and log format counts
+- Log ingestion rate over time
+- Severity and log source distribution (donut charts)
+- Top 10 source IPs and top alerted IPs
+- Alert timeline stacked by severity
+- Recent alerts table with full details
+
+All panels auto-refresh every 10 seconds and respect the dashboard time picker.
+
+To run the full architecture stack **with** Grafana:
+
+```bash
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.architecture.yml -f infra/docker-compose.grafana.yml up --build
 ```
 
 ---

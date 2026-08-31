@@ -1,0 +1,22 @@
+# Auto-provisioned ClickHouse datasource for Grafana.
+# This file is mounted into Grafana at startup — no manual setup needed.
+# Docs: https://grafana.com/docs/grafana/latest/administration/provisioning/#datasources
+
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    isDefault: true
+    editable: true
+    jsonData:
+      # Use the Docker service name as the host
+      host: clickhouse
+      port: 9000
+      protocol: native
+      defaultDatabase: ulpf
+      username: default
+      tlsSkipVerify: true
+    secureJsonData:
+      password: ""
