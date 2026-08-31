@@ -1,0 +1,38 @@
+# Grafana dashboard overlay for the ULPF pipeline.
+# Usage:
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.grafana.yml up --build
+#
+# Grafana will be available at http://localhost:3000
+# Default credentials: admin / admin
+
+services:
+  grafana:
+    image: grafana/grafana-oss:11.6.0
+    container_name: grafana-ulpf
+    ports:
+      - "3000:3000"
+    environment:
+      # Install the ClickHouse datasource plugin on first boot
+      GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource"
+      # Default admin credentials (change in production)
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Allow embedding and anonymous read for SOC monitors
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Dashboard home
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/ulpf-overview.json"
+    volumes:
+      # Datasource auto-provisioning
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      # Dashboard provisioner config
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      # Pre-built dashboard JSON files
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # Persistent Grafana data (user changes, annotations, etc.)
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
