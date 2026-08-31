@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import os
 import json
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-import httpx
+
+import urllib.request
+import urllib.error
+
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore
 
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
 
 try:
     from services.ML_Analyzer.telemetry_connector import TelemetryAggregator
@@ -74,13 +83,15 @@ class EmailNotificationHandler(NotificationHandler):
     async def emit(self, alert: Dict[str, Any]) -> None:
         try:
             msg = self.format_email(alert)
-            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=5.0) as server:
+            clean_pass = self.smtp_password.replace(" ", "").strip()
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10.0) as server:
                 server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
+                server.login(self.smtp_user, clean_pass)
                 server.sendmail(self.smtp_user, [self.recipient_email], msg.as_string())
             logger.info("Alert email successfully sent to %s via Gmail SMTP", self.recipient_email)
         except Exception as exc:
             logger.error("Failed to send alert email to %s: %s", self.recipient_email, exc)
+
 
 
 
@@ -106,11 +117,18 @@ class WebhookNotificationHandler(NotificationHandler):
 
     async def emit(self, alert: Dict[str, Any]) -> None:
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(self.webhook_url, json=alert, timeout=2.0)
-                res.raise_for_status()
+            if httpx is not None:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(self.webhook_url, json=alert, timeout=2.0)
+                    res.raise_for_status()
+            else:
+                data = json.dumps(alert).encode("utf-8")
+                req = urllib.request.Request(self.webhook_url, data=data, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    pass
         except Exception as exc:
             logger.error("Failed to send webhook notification to %s: %s", self.webhook_url, exc)
+
 
 
 class PagerDutyNotificationHandler(NotificationHandler):
@@ -151,11 +169,18 @@ class PagerDutyNotificationHandler(NotificationHandler):
     async def emit(self, alert: Dict[str, Any]) -> None:
         payload = self.format_pagerduty(alert)
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(self.events_api_url, json=payload, timeout=2.0)
-                res.raise_for_status()
+            if httpx is not None:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(self.events_api_url, json=payload, timeout=2.0)
+                    res.raise_for_status()
+            else:
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(self.events_api_url, data=data, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    pass
         except Exception as exc:
             logger.error("Failed to send PagerDuty alert: %s", exc)
+
 
 
 
@@ -203,6 +228,67 @@ class NotificationDispatcher:
                 logger.error("Notification handler failed: %s", exc)
 
 
+def load_env_file(env_file_path: Optional[str] = None) -> None:
+    """Loads key-value pairs from a .env file into os.environ if present."""
+    if env_file_path is None:
+        try:
+            from pathlib import Path
+            root = Path(__file__).resolve().parent.parent.parent
+            candidate = root / ".env"
+            if candidate.is_file():
+                env_file_path = str(candidate)
+        except Exception:
+            pass
+
+    if env_file_path and os.path.exists(env_file_path):
+        with open(env_file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+
+
+def create_dispatcher_from_env() -> NotificationDispatcher:
+    """Factory creating a NotificationDispatcher equipped with handlers derived from environment vars."""
+    load_env_file()
+    handlers: List[NotificationHandler] = [ConsoleNotificationHandler(), SIEMCEFHandler()]
+
+    # Check for Gmail / SMTP environment configuration
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    recipient = os.getenv("RECIPIENT_EMAIL", "").strip()
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+
+    if smtp_user and smtp_pass and recipient and "your-email" not in smtp_user:
+        logger.info("Initializing Gmail SMTP Notification Handler for %s", recipient)
+        handlers.append(
+            EmailNotificationHandler(
+                smtp_user=smtp_user,
+                smtp_password=smtp_pass,
+                recipient_email=recipient,
+                smtp_host=smtp_host,
+                smtp_port=smtp_port,
+            )
+        )
+
+    # Check for HTTP Webhook environment configuration
+    webhook_url = os.getenv("NOTIFICATION_WEBHOOK_URL", "").strip()
+    if webhook_url:
+        logger.info("Initializing Webhook Notification Handler for %s", webhook_url)
+        handlers.append(WebhookNotificationHandler(webhook_url=webhook_url))
+
+    return NotificationDispatcher(handlers=handlers)
+
+
+
+
 class ThreatDetectionService:
     def __init__(
         self,
@@ -211,20 +297,29 @@ class ThreatDetectionService:
         prediction_url: str = "http://localhost:8000/predict-threat",
     ) -> None:
         self.telemetry = telemetry or TelemetryAggregator()
-        self.notifications = notifications or NotificationDispatcher()
+        self.notifications = notifications or create_dispatcher_from_env()
         self.prediction_url = prediction_url
+
 
     async def evaluate(self, event_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         payload = {"event_id": event_id, "entity_id": entity_id or event_id, **self.telemetry.aggregate(event_id, entity_id)}
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(self.prediction_url, json=payload, timeout=2.0)
-                response.raise_for_status()
-                prediction = response.json()
+            if httpx is not None:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(self.prediction_url, json=payload, timeout=2.0)
+                    response.raise_for_status()
+                    prediction = response.json()
+            else:
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(self.prediction_url, data=data, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    prediction = json.loads(resp.read().decode("utf-8"))
+
             if prediction.get("is_anomaly") and prediction.get("risk_level") in {"MEDIUM", "HIGH", "CRITICAL"}:
                 await self.notifications.send({"event_id": event_id, "type": "threat_detection", "prediction": prediction, "telemetry": payload})
             return prediction
         except Exception:
             logger.exception("Threat evaluation failed for event_id=%s", event_id)
             raise
+
 

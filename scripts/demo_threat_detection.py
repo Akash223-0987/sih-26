@@ -14,10 +14,12 @@ for d in (str(root_dir), ml_dir, anomaly_dir):
     if d not in sys.path:
         sys.path.insert(0, d)
 
+import asyncio
 from fastapi.testclient import TestClient
 from ml_service import app as ml_app
 from anomaly_engine import HybridAnomalyEngine
-from threat_detector import SIEMCEFHandler
+from threat_detector import SIEMCEFHandler, create_dispatcher_from_env
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ThreatDetectionDemo")
@@ -156,9 +158,18 @@ def run_demo() -> None:
             row = f"{scenario:<34} | {label:<18} | {conf:<6.2f} | {anomaly_score:<7.2f} | {risk:<9} | {action:<15}"
             print(row)
 
-            # Emit Gmail Notification Alert preview for non-benign or anomalous events
+            # Emit live notification alert for HIGH/CRITICAL threats
             if risk in {"HIGH", "CRITICAL"}:
-                print(f"   +-- [Gmail Alert]: Subject: [ULPF SECURITY ALERT] {risk} Threat Detected: {label} -> Sent to Admin Inbox")
+                dispatcher = create_dispatcher_from_env()
+                alert_payload = {
+                    "event_id": telemetry.get("event_id"),
+                    "type": "threat_detection",
+                    "prediction": ml_data or {"risk_level": risk, "threat_label": label, "confidence_score": conf},
+                    "telemetry": telemetry,
+                }
+                asyncio.run(dispatcher.send(alert_payload))
+                print(f"   +-- [Dispatched Alert]: Live Gmail & Webhook notification sent for {label}")
+
 
     print("\n" + "=" * 90)
     print("All Threat & Anomaly Scenarios Evaluated Successfully!")
