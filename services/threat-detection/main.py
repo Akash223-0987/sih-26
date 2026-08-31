@@ -90,7 +90,10 @@ class ThreatDetection:
                 "title": f"{label} detected", "severity": severity,
                 "description": f"Confirmed after rule triage and ML analysis (risk {risk:.2f}).",
                 "source": "threat-detection", "event_id": event_id,
-                "context": {"triage_reasons": reasons, "risk_score": risk, "ml_result": result},
+                "context": {
+                    "triage_reasons": reasons, "risk_score": risk,
+                    "ml_result": result, "log": request.log_data,
+                },
             }
             try:
                 async with httpx.AsyncClient(timeout=4.0) as client:
