@@ -27,6 +27,12 @@ services:
       dockerfile: services/notification-service/Dockerfile
     ports:
       - "8003:8000"
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_DB: ulpf
+    depends_on:
+      - clickhouse
 
   threat-detection:
     build:

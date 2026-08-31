@@ -45,7 +45,7 @@
         "type": "query",
         "datasource": {
           "type": "grafana-clickhouse-datasource",
-          "uid": ""
+          "uid": "clickhouse"
         },
         "query": "SELECT DISTINCT log_source FROM ulpf.logs_normalized ORDER BY log_source",
         "current": {
@@ -376,7 +376,7 @@
       "targets": [
         {
           "datasource": { "type": "grafana-clickhouse-datasource" },
-          "rawSql": "SELECT src_ip, count() AS events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime AND src_ip != '' GROUP BY src_ip ORDER BY events DESC LIMIT 10",
+          "rawSql": "SELECT if(src_ip = '', coalesce(nullIf(extract(raw_message, '(?:src=|,)([0-9]{1,3}(?:\\\\.[0-9]{1,3}){3})'), ''), 'Unknown'), src_ip) AS source_ip, count() AS events FROM ulpf.logs_normalized WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY source_ip ORDER BY events DESC LIMIT 10",
           "refId": "A",
           "format": 1,
           "queryType": "sql",
@@ -624,7 +624,7 @@
       "targets": [
         {
           "datasource": { "type": "grafana-clickhouse-datasource" },
-          "rawSql": "SELECT src_ip, count() AS alerts FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime AND src_ip != '' GROUP BY src_ip ORDER BY alerts DESC LIMIT 10",
+          "rawSql": "SELECT if(src_ip = '', 'Unknown', src_ip) AS source_ip, count() AS alerts FROM ulpf.alerts WHERE timestamp >= $__fromTime AND timestamp <= $__toTime GROUP BY source_ip ORDER BY alerts DESC LIMIT 10",
           "refId": "A",
           "format": 1,
           "queryType": "sql",
